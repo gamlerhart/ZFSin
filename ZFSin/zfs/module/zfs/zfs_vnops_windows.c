@@ -1899,8 +1899,24 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 	NTSTATUS Status = STATUS_NOT_IMPLEMENTED;
 
 	switch (IrpSp->Parameters.SetFile.FileInformationClass) {
-	case FileAllocationInformation: // set allocation size, refreserve?
+	case FileAllocationInformation:
 		dprintf("* FileAllocationInformation\n");
+		FILE_ALLOCATION_INFORMATION *info = Irp->AssociatedIrp.SystemBuffer;
+		LONGLONG allocSize = info->AllocationSize.QuadPart;
+		struct vnode *vp = IrpSp->FileObject->FsContext;
+		VN_HOLD(vp);
+
+		// set allocation size: Set the length of the file. refreserve?
+		// Difference between FileEndOfFileInformation and FileAllocationInformation?
+		// FileAllocationInformation: Allowed to be sparse?
+		// FileAllocationInformation: Has to allocate?
+		znode_t *zp = VTOZ(vp);
+		zfsvfs_t *zfsvfs = zp->z_zfsvfs;
+		ZFS_ENTER(zfsvfs); // this returns if true, is that ok?
+		Status = zfs_freesp(zp, allocSize, 0, 0, TRUE); // Len = 0 is truncate
+		ZFS_EXIT(zfsvfs);
+
+		VN_RELE(vp);
 		break;
 	case FileBasicInformation: // chmod
 		dprintf("* FileBasicInformation\n");
